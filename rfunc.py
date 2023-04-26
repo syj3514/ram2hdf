@@ -9,7 +9,7 @@ import h5py
 import pickle
 from IPython import get_ipython
 from IPython.display import clear_output
-import hparams
+import rparams
 from rur import uri
 import logging
 
@@ -27,9 +27,9 @@ class DotDict(dict):
         self.update(state)
         self.__dict__ = self
 p = {}
-for key in hparams.__dict__.keys():
+for key in rparams.__dict__.keys():
 #    if not "_" in key:
-    p[key] = hparams.__dict__[key]
+    p[key] = rparams.__dict__[key]
 p = DotDict(p)
 
 if p.functype=='python':
@@ -39,8 +39,15 @@ elif p.functype=='fortran':
     from read_ramses_fortran import readramses
     print("Read ramses using fortran")
 else:
-    raise ImportError(f"`functype` in `params.py` should be `fortran` or `python`! (`{p.functype}` is given)")
-
+    raise ImportError(f"`functype` in `rparams.py` should be `fortran` or `python`! (`{p.functype}` is given)")
+chems = {
+    'hagn':['H','O','Fe', 'C', 'N', 'Mg', 'Si'], 
+    'yzics':[], 'nh':[], "fornax":[], "y2":[], "dm_only":[],
+    "y3":['H', 'O', 'Fe', 'Mg', 'C', 'N', 'Si', 'S'], 
+    "y4":['H', 'O', 'Fe', 'Mg', 'C', 'N', 'Si', 'S', 'D'], 
+    "nc":['H', 'O', 'Fe', 'Mg', 'C', 'N', 'Si', 'S', 'D'],
+    'nh2':['H', 'O', 'Fe', 'Mg', 'C', 'N', 'Si', 'S', 'D']}
+chem = chems[p.mode]
 
 ###################################################################
 ###        Useful functions                                     ###
@@ -107,7 +114,7 @@ def cleanprint(num=1):
             # delete last line
             sys.stdout.write('\x1b[2K')
 
-def printgal(gal, mode='hagn'):
+def printgal(gal, mode=p.mode):
     '''Summary of galaxy information'''
     iout = gal['timestep']
     made = 'GalaxyMaker'
@@ -195,8 +202,8 @@ def set_attribute(group:h5py.Dataset, key:str, conversion, unit=None, readme=Non
 def save_hdf(snap:uri.RamsesSnapshot, target:np.ndarray, partids:np.ndarray, calc_total:bool=False, maxGB:float=50, logger:logging.Logger=None):
     global p, ipy
     ref = time.time()
-    fname = f"{p.savedir}/{snap.iout:03d}/HAGN_{snap.iout:03d}_MAGPI_{target['id']:06d}.hdf5"
-    if p.verbose>0: dprint(printgal(target), logger)
+    fname = f"{p.savedir}/{p.mode}/{snap.iout:03d}/{p.mode}_{snap.iout:03d}_MAGPI_{target['id']:06d}.hdf5"
+    if p.verbose>0: dprint(printgal(target, mode=p.mode), logger)
 
     if os.path.isfile(fname):
         msg = f"`{fname}` is already saved!"
@@ -204,9 +211,6 @@ def save_hdf(snap:uri.RamsesSnapshot, target:np.ndarray, partids:np.ndarray, cal
         if p.verbose>1:
             with h5py.File(fname, 'r') as f:
                 dprint(f.keys(),logger)
-                #dprint(f"\t{f['Header'].attrs.keys()}",logger)
-                #dprint(f"\t{f['PartType0'].keys()}",logger)
-                #dprint(f"\t{f['PartType4'].keys()}",logger)
             if p.verbose>0: dprint(msg, logger)
         return time.time()-ref, msg
 
@@ -253,7 +257,7 @@ def save_hdf(snap:uri.RamsesSnapshot, target:np.ndarray, partids:np.ndarray, cal
             nstar, ndm, ncell = calc_totnum(snap)
             header.attrs["NumPart_Total"] = np.array([ncell, ndm, 0, 0, nstar, 0])
             header.attrs["NumPart_This"] = np.array([len(snap.cell.table), 0, 0, 0, len(star.table), 0])
-            header.attrs["RunLabel"] = "Horizon-AGN" #dtype=h5py.string_dtype(encoding='utf-8')
+            header.attrs["RunLabel"] = p.simname #dtype=h5py.string_dtype(encoding='utf-8')
             header.attrs["ExpansionFactor"] = snap.params['aexp']
             header.attrs["Omega0"] = snap.params['omega_m']
             header.attrs["OmegaBaryon"] = snap.params['omega_b']
@@ -310,11 +314,14 @@ def save_hdf(snap:uri.RamsesSnapshot, target:np.ndarray, partids:np.ndarray, cal
             set_attribute(part0, "ParticleIDs", 0, unit='None', readme="AMR cells don't have unique IDs because they are changed at every timestep")
 
             chem = part0.create_group("ElementAbundance")
-            chem.create_dataset(f"Carbon", data=snap.cell['C'], compression=compression)
+            dat = snap.cell['C'] if 'C' in chem else np.zeros(len(snap.cell['x']))-1
+            chem.create_dataset(f"Carbon", data=dat, compression=compression)
             set_attribute(chem, "Carbon", 0, unit="Mass fraction", readme="Mass fraction of Carbon for a given cell mass")
-            chem.create_dataset(f"Oxygen", data=snap.cell['O'], compression=compression)
+            dat = snap.cell['O'] if 'O' in chem else np.zeros(len(snap.cell['x']))-1
+            chem.create_dataset(f"Oxygen", data=dat, compression=compression)
             set_attribute(chem, "Oxygen", 0, unit="Mass fraction", readme="Mass fraction of Oxygen for a given cell mass")
-            chem.create_dataset(f"Hydrogen", data=snap.cell['H'], compression=compression)
+            dat = snap.cell['H'] if 'H' in chem else np.zeros(len(snap.cell['x']))-1
+            chem.create_dataset(f"Hydrogen", data=dat, compression=compression)
             set_attribute(chem, "Hydrogen", 0, unit="Mass fraction", readme="Mass fraction of Hydrogen for a given cell mass")
 
             part0.create_dataset(f"Metallicity", data=snap.cell['metal'], compression=compression) # ★★★

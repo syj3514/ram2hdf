@@ -1,7 +1,7 @@
 from rur.fortranfile import FortranFile
 import numpy as np
 import glob
-import gc
+import gc, os
 
 # def read_cell(iout, base='.', path_in_repo='snapshots', verbose=True):
 ncell_tot = 0
@@ -54,20 +54,72 @@ ndm = 0
 def read_part(repo, iout, cpu_list, verbose, nthread):
     global nstar, ndm
     nstar = 0; ndm = 0
-    files = glob.glob(f"{repo}/output_{iout:05d}/part*out*")
+    # files = glob.glob(f"{repo}/output_{iout:05d}/part*out*")
     files = [f"{repo}/output_{iout:05d}/part_{iout:05d}.out{icpu:05d}" for icpu in cpu_list]
-    with FortranFile(f"{files[0]}", mode='r') as f:
-        f.skip_records(4) # ncpu, ndim, npart, localseed(+tracer_seed)
-        nstar = f.read_ints(np.int32)[0] # nstar
-        f.skip_records(2) # mstar_tot, mstar_lost
-        nsink = f.read_ints(np.int32)[0] # nsink
-        ncloud = 2109 * nsink
-    npart_tot = 0
-    for file in files:
-        with FortranFile(f"{file}", mode='r') as f:
-            f.skip_records(2)
-            npart_tot += f.read_ints(np.int32)[0]
-    ndm = npart_tot - nstar - ncloud
+    header = f"{repo}/output_{iout:05d}/header_{iout:05d}.txt"
+    sinkinfo = f"{repo}/output_{iout:05d}/sink_{iout:05d}.info"
+
+    isfamily = False
+    # (NH, NH2, Fornax, NC)
+    if os.path.isfile(header): 
+        with open(header, "rt") as f:
+            temp = f.readline()
+            # (Fornax, NH2, NC)
+            if "Family" in temp: 
+                isfamily = True
+                ntracer_tot = int( f.readline()[14:] ) # other_tracer
+                for _ in range(5): # tracers of debris, cloud, star, other, gas
+                    ntracer_tot += int( f.readline()[14:] )
+                ndm = int( f.readline()[14:] )
+                nstar = int( f.readline()[14:] )
+                ncloud_tot = int( f.readline()[14:] )
+                npart_tot = ntracer_tot + ndm + nstar + ncloud_tot
+                for _ in range(3): # debris, other, undefined
+                    npart_tot += int( f.readline()[14:] )
+        
+                if os.path.isfile(sinkinfo): # (NH2, NC)
+                    with open(sinkinfo, 'rt') as f:
+                        nsink_tot = int(f.readline().split()[-1])
+                else: # (Fornax)
+                    with FortranFile(f"{files[0]}", mode='r') as f:
+                        f.skip_records(7)
+                        nsink_tot = f.read_ints(np.int32)[0]
+            # (NH)
+            else: 
+                npart_tot = int(f.readline()); f.readline()
+                ndm = int(f.readline()); f.readline()
+                nstar = int(f.readline()); f.readline()
+                nsink_tot = int(f.readline()); f.readline()
+                ncloud_tot = nsink_tot * 2109
+                ntracer_tot = 0
+    # (hagn, yzics)
+    else: 
+        with FortranFile(f"{files[0]}", mode='r') as f:
+            f.skip_records(4) # ncpu, ndim, npart, localseed(+tracer_seed)
+            nstar = f.read_ints(np.int32)[0]
+            f.skip_records(2) # mstar_tot, mstar_lost
+            nsink_tot = f.read_ints(np.int32)[0]
+            ncloud_tot = 2109 * nsink_tot
+        ntracer_tot = 0
+        npart_tot = 0
+        for file in files:
+            with FortranFile(f"{file}", mode='r') as f:
+                f.skip_records(2)
+                npart_tot += f.read_ints(np.int32)[0]
+        ndm = npart_tot - nstar - ncloud_tot
+
+    # with FortranFile(f"{files[0]}", mode='r') as f:
+    #     f.skip_records(4) # ncpu, ndim, npart, localseed(+tracer_seed)
+    #     nstar = f.read_ints(np.int32)[0]
+    #     f.skip_records(2) # mstar_tot, mstar_lost
+    #     nsink = f.read_ints(np.int32)[0]
+    #     ncloud = 2109 * nsink
+    # npart_tot = 0
+    # for file in files:
+    #     with FortranFile(f"{file}", mode='r') as f:
+    #         f.skip_records(2)
+    #         npart_tot += f.read_ints(np.int32)[0]
+    # ndm = npart_tot - nstar - ncloud
 
 
 sfrs = np.array([])
