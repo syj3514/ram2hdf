@@ -206,7 +206,7 @@ def save_hdf(snap:uri.RamsesSnapshot, target:np.ndarray, partids:np.ndarray, cal
     if p.verbose>0: dprint(printgal(target, mode=p.mode), logger)
 
     if os.path.isfile(fname):
-        msg = f"`{fname}` is already saved!"
+        msg = f"(`{fname}` is already saved!)"
         # if p.verbose==1: cleanprint(1)
         if p.verbose>1:
             with h5py.File(fname, 'r') as f:
@@ -367,9 +367,9 @@ def save_hdf(snap:uri.RamsesSnapshot, target:np.ndarray, partids:np.ndarray, cal
             part4.create_dataset(f"Member", data=vals, compression=compression)
             set_attribute(part4, "Member", 1, unit="None", readme="Membership boolean by GalaxyMaker")
 
-        size = (snap.part_data.nbytes+snap.cell_data.nbytes) / 2**30 #GB
-        msg = f" > `Save (cache {size:.2f} GB)"
-        if p.verbose>0: timer0.done(prefix=msg)
+        size = (snap.part_data.nbytes + snap.cell_data.nbytes) / 2**30 #GB
+        msg = f"(cache {size:.2f} GB)"
+        if p.verbose>0: timer0.done(prefix=f" > `Save {msg}")
             # if p.verbose==1:
             #     if not ipy:
             #         cleanprint(10)
